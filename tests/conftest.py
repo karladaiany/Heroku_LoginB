@@ -1,33 +1,38 @@
+import os
 import pytest
+from selenium import webdriver
 
-from . import config
+from . import config, credentials
 
+
+# Em um novo projeto, o que mudaria seria apenas os valores default e help (explicação) abaixo
 def pytest_addoption(parser):
     parser.addoption('--baseurl',
                      action='store',
                      default='http://the-internet.herokuapp.com',
                      help='endereço do site alvo do teste'
-    )
+                     )
     parser.addoption('--host',
                      action='store',
                      default='saucelabs',
-                     help = 'ambiente em que vou executar os testes'
-    )
+                     help='ambiente em que vou executar os testes'
+                     )
     parser.addoption('--browser',
                      action='store',
                      default='chrome',
-                     help = 'navegador padrão'
-    )
+                     help='navegador padrão'
+                     )
     parser.addoption('--browserversion',
                      action='store',
                      default='97.0',
-                     help = 'versão do navegador padrão'
-    )
+                     help='versão do navegador padrão'
+                     )
     parser.addoption('--platform',
                      action='store',
                      default='Windows 10',
-                     help = 'Versão do Sistema Operacional'
-    )
+                     help='Versão do Sistema Operacional'
+                     )
+
 
 @pytest.fixture
 def driver(request):
@@ -37,14 +42,58 @@ def driver(request):
     config.browserversion = request.config.getoption('--browserversion')
     config.platform = request.config.getoption('--platform')
 
+    # Configuração para executar no SauceLabs (Nuvem)
     if config.host == 'saucelabs':
-        test_name = request.node.name # adicionar o nome do teste baseado no script
+        test_name = request.node.name  # Adicionar o nome do teste baseado no script
         capabilities = {
             'browserName': config.browser,
             'browserVersion': config.browserversion,
-            'platformName': config.plastform,
-            'sauce.options': {
-                'name': test_name, # nome do teste conforme acima
+            'platformName': config.platform,
+            'sauce:options': {
+                'name': test_name  # nome do teste conforme acima
             }
         }
-        #ToDo: _credentials =
+        # Credenciais
+        _credentials = credentials.SAUCE_USERNAME + ':' + credentials.SAUCE_ACCESS_KEY
+        _url = 'https://' + _credentials + '@ondemand.us-west-1.saucelabs.com:443/wd/hub'
+
+        # Chamada para o SauceLabs
+        driver_ = webdriver.Remote(_url, capabilities)
+
+    else:  # Configuração para execução local / localhost
+        if config.browser == 'chrome':
+            _chromedriver = os.path.join(os.getcwd(), 'vendor', 'chromedriver.exe')
+            if os.path.isfile(_chromedriver):
+                driver_ = webdriver.Chrome(_chromedriver)  # Vai usar o driver dentro da pasta vendor
+            else:
+                driver_ = webdriver.Chrome()  # Vai usar o chromedriver apontado nas variáveis de ambiente
+        elif config.browser == 'firefox':
+            _geckodriver = os.path.join(os.getcwd(), 'vendor', 'geckodriver.exe')
+            if os.path.isfile(_geckodriver):
+                driver_ = webdriver.Firefox(_geckodriver)
+            else:
+                driver_ = webdriver.Firefox()
+
+    def quit():  # Sub-função para finalizar o objeto Selenium
+        # Atualização do status de passou ou falhou
+        # Regra para marcar se passou ou falhou baseado no retorno da requisição
+        sauce_result = 'failed' if request.node.rep_call.failed else 'passed'
+        # Executar um script no SauceLabs que sinaliza para o nosso terminal o resultado baseado na regra
+        driver_.execute_script('sauce:job-result={}'.format(sauce_result))
+        # Desliga/encerra o Selenium
+        driver_.quit()
+
+    # Configura a requisição para que ela execute a subfunção de quit ao finalizar a requisição/job
+    request.addfinalizer(quit)
+    # Retorna o Selenium turbinado (com essas novas configurações e regras) - Sobreposição
+    return driver_
+
+
+# Configurar o gatilho para a geração do relatório
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)  # Ativa o gatilho no momento da inicialização da requisição
+def pytest_runtest_makereport(item, call):  # Função para gerar um relatório quando for executado o pytest
+    outcome = yield  # OBS: NÃO IMPORTAR O PACOTE OUTCOME, é uma configuração que conflita com o pacote
+    rep = outcome.get_result()  # Variável de relatório que irá guardar o resultado
+
+    # Atributos do relatório
+    setattr(item, 'rep_' + rep.when, rep)

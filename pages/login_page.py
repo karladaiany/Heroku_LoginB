@@ -1,5 +1,4 @@
 from selenium.webdriver.common.by import By
-
 from pages.base_page import BasePage
 
 
@@ -20,7 +19,7 @@ class LoginPage(BasePage):
         #  abre a página que será testada
         self._visitar('http://the-internet.herokuapp.com/login')
         # verificar se o elemento formulário de login está visível
-        assert self._esta_visivel(self._login_form)
+        assert self._esta_visivel(self._login_form, 5)
 
     # método que irá realizar o login COM usuário e senha fornecidos
     def com_(self, username, password):
@@ -41,9 +40,9 @@ class LoginPage(BasePage):
         self._clicar(self._submit_button)
 
     # função para validar se é exibida a mensagem de sucesso
-    def success_message_present(self):
+    def vejo_mensagem_de_sucesso(self):
         return self._esta_visivel(self._success_message, 5)
 
     # função para validar se é exibida a mensagem de falha, em razão do usuário
-    def failure_message_present(self):
+    def vejo_mensagem_de_falha(self):
         return self._esta_visivel(self._failure_message, 5)
